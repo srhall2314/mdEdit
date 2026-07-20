@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "mdedit": {
+      "command": "/Applications/mdEdit.app/Contents/Helpers/mdedit-mcp",
+      "env": { "MDEDIT_APP_PATH": "/Applications/mdEdit.app" }
+    }
+  }
+}

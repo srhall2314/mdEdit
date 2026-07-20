@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "mdedit": {
+      "command": "/absolute/path/to/mdEdit/mcp-server/.build/release/mdedit-mcp",
+      "env": {
+        "MDEDIT_APP_PATH": "/Applications/mdEdit.app"
+      }
+    }
+  }
+}

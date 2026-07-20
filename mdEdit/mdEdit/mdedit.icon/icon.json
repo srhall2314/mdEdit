@@ -1,0 +1,33 @@
+{
+  "groups": [
+    {
+      "layers": [
+        {
+          "hidden": false,
+          "image-name": "kelly-light.svg",
+          "image-name-specializations": [
+            {
+              "appearance": "dark",
+              "value": "kelly-dark.svg"
+            }
+          ],
+          "name": "kelly"
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    }
+  ],
+  "supported-platforms": {
+    "circles": [
+      "watchOS"
+    ],
+    "squares": "shared"
+  }
+}
