@@ -5,8 +5,13 @@ editable by an AI** over a local MCP (Model Context Protocol) transport — no s
 between. Clean, iA Writer-inspired writing surface; fully native (menus, key equivalents,
 Liquid Glass on macOS 26).
 
-A signed, notarized build is available at [lyr3.com/Products/mdedit](https://www.lyr3.com/Products/mdedit),
-or build it yourself from this repo (requires macOS 26 and Xcode 26; no external dependencies).
+## Download
+
+**[Get mdEdit at lyr3.com](https://www.lyr3.com/Products/mdedit)** — a signed, notarized
+build for macOS 26. No Xcode, no build step. That's the way in for most people.
+
+Everything below is for working with the source (requires macOS 26 and Xcode 26; no
+external dependencies).
 
 ## Layout
 
@@ -26,7 +31,7 @@ The app owns everything. The bridge is a thin pipe, so **every tool call passes 
 the app and is visible on screen** — no off-screen side effects. Socket path:
 `~/Library/Application Support/mdEdit/mcp.sock`.
 
-## Install (personal build)
+## Install from source
 
 Run `./install.sh` — it builds the app in **Release**, copies it to `/Applications/mdEdit.app`
 (independent of Xcode/DerivedData), builds the `mdedit-mcp` bridge, and prints the Claude
