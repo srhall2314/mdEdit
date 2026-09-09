@@ -20,6 +20,10 @@ final class MCPSocketServer: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.lyr3.mdEdit.mcp-socket")
     private var listenFD: Int32 = -1
     private var running = false
+    /// Identity (device + inode) of the socket file this process created, so
+    /// shutdown only removes its own — never one another instance has since
+    /// put in its place.
+    private var ownedNode: (dev: dev_t, ino: ino_t)?
 
     init(registry: DocumentRegistry) {
         self.registry = registry
@@ -38,7 +42,19 @@ final class MCPSocketServer: @unchecked Sendable {
     func stop() {
         running = false
         if listenFD >= 0 { close(listenFD) }
+
+        // Only remove the socket file if it's still the one we bound. An
+        // instance that never bound (or whose file has been replaced) must
+        // leave the path alone: unlinking it here would cut off whichever
+        // instance is actually serving, and it would do so silently — that
+        // process keeps a listening fd on an inode nothing can reach any more.
+        guard let owned = ownedNode else { return }
+        var info = stat()
+        guard stat(Self.socketURL.path, &info) == 0,
+              info.st_dev == owned.dev,
+              info.st_ino == owned.ino else { return }
         unlink(Self.socketURL.path)
+        ownedNode = nil
     }
 
     // MARK: Accept loop
@@ -50,7 +66,19 @@ final class MCPSocketServer: @unchecked Sendable {
             withIntermediateDirectories: true
         )
         let path = url.path
-        unlink(path) // clear any stale socket from a previous run
+
+        // The path is shared by every mdEdit instance, so it may already be in
+        // use — commonly a Debug build running alongside the installed app.
+        // Probe before touching it: a socket that accepts a connection belongs
+        // to a live instance and is not ours to replace. Only a socket left
+        // behind by a process that died without cleaning up gets cleared.
+        if FileManager.default.fileExists(atPath: path) {
+            guard !Self.isLive(path: path) else {
+                NSLog("mdEdit MCP: another instance is already listening at \(path) — this one will not serve MCP")
+                return
+            }
+            unlink(path)
+        }
 
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else {
@@ -58,17 +86,7 @@ final class MCPSocketServer: @unchecked Sendable {
             return
         }
 
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        let capacity = MemoryLayout.size(ofValue: addr.sun_path)
-        path.withCString { cstr in
-            withUnsafeMutablePointer(to: &addr.sun_path) {
-                $0.withMemoryRebound(to: CChar.self, capacity: capacity) { dst in
-                    _ = strncpy(dst, cstr, capacity - 1)
-                }
-            }
-        }
-
+        var addr = Self.address(for: path)
         let size = socklen_t(MemoryLayout<sockaddr_un>.size)
         let bound = withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, size) }
@@ -86,6 +104,8 @@ final class MCPSocketServer: @unchecked Sendable {
 
         listenFD = fd
         running = true
+        var info = stat()
+        if stat(path, &info) == 0 { ownedNode = (info.st_dev, info.st_ino) }
         NSLog("mdEdit MCP: listening at \(path)")
 
         while running {
@@ -95,6 +115,38 @@ final class MCPSocketServer: @unchecked Sendable {
             }
             handleConnection(client)
         }
+    }
+
+    // MARK: Socket helpers
+
+    /// Fill a `sockaddr_un` for a filesystem path.
+    private static func address(for path: String) -> sockaddr_un {
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        let capacity = MemoryLayout.size(ofValue: addr.sun_path)
+        path.withCString { cstr in
+            withUnsafeMutablePointer(to: &addr.sun_path) {
+                $0.withMemoryRebound(to: CChar.self, capacity: capacity) { dst in
+                    _ = strncpy(dst, cstr, capacity - 1)
+                }
+            }
+        }
+        return addr
+    }
+
+    /// Is something accepting connections at `path` right now? A socket file
+    /// orphaned by a killed process refuses the connection (ECONNREFUSED); a
+    /// live listener accepts it.
+    private static func isLive(path: String) -> Bool {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var addr = address(for: path)
+        let size = socklen_t(MemoryLayout<sockaddr_un>.size)
+        let connected = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, size) }
+        }
+        return connected == 0
     }
 
     // MARK: Per-connection request loop
