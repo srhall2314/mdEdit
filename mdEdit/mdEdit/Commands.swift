@@ -32,6 +32,16 @@ struct AppCommands: Commands {
     private var noEditor: Bool { editorActions == nil }
 
     var body: some Commands {
+        // File menu: the scratchpad sits with New/Open because that's what it
+        // is — a document you reach for, not a panel.
+        CommandGroup(after: .newItem) {
+            Button("Scratchpad") {
+                Scratchpad.openOrFocus()
+            }
+            .keyboardShortcut("s", modifiers: [.command, .option])
+            Divider()
+        }
+
         // App menu: a one-click bridge setup, right below Settings…
         CommandGroup(after: .appSettings) {
             Button("Set Up Claude Desktop…") {

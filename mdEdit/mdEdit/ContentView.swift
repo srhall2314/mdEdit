@@ -44,6 +44,11 @@ struct ContentView: View {
                     .padding(16)
             }
         }
+        .background {
+            if Scratchpad.isScratchpad(fileURL) {
+                ScratchpadWindowGuard().frame(width: 0, height: 0)
+            }
+        }
         // Register this window with the MCP document registry while it's live.
         .onAppear { DocumentRegistry.shared.register(document: document, url: fileURL) }
         .onDisappear { DocumentRegistry.shared.unregister(url: fileURL) }

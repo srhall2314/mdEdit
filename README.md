@@ -113,6 +113,13 @@ without another round trip.
   the selection or prefixes the current lines, and is undoable.
 - **Help ▸ mdEdit Markdown Syntax** (⌘?) opens a live cheat sheet (syntax beside its
   rendered result).
+- **Scratchpad** (⌥⌘S) — one always-there document for text in transit, kept at
+  `~/Library/Application Support/mdEdit/Scratchpad.md`. It opens automatically on launch and
+  sits leftmost in the tab bar, so there is always somewhere to drop something. Because the
+  source editor is plain text, pasting into it strips the formatting from whatever you
+  copied. It is an ordinary markdown file, so it autosaves, survives a relaunch, and is
+  readable and editable over MCP like any other open document. ⌘W closes it after a
+  confirmation; ⌥⌘S brings it back with its contents.
 - AI edits **flush to disk immediately**; human typing autosaves on a short delay.
 
 ## Design notes
