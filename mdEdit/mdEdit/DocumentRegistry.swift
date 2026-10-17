@@ -155,6 +155,11 @@ final class DocumentRegistry {
         let range = NSRange(location: start, length: end - start)
         let insertedLength = (text as NSString).length
 
+        // Checkpoint the pre-edit text before touching anything. One version per
+        // tool call — the AI edit below is flushed to disk immediately, so this
+        // is the only thing standing between a rewrite and an unrecoverable one.
+        VersionCheckpoint.record(contents: document.text, of: url)
+
         if let textView = textViewsByDocument[ObjectIdentifier(document)]?.textView {
             // Route through the live text view so the edit is visible and undoable.
             if textView.shouldChangeText(in: range, replacementString: text) {

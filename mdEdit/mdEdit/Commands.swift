@@ -13,16 +13,26 @@ struct PreviewVisibleKey: FocusedValueKey {
     typealias Value = Binding<Bool>
 }
 
+struct PinTargetKey: FocusedValueKey {
+    typealias Value = VersionCheckpoint.Target
+}
+
 extension FocusedValues {
     var previewVisible: Binding<Bool>? {
         get { self[PreviewVisibleKey.self] }
         set { self[PreviewVisibleKey.self] = newValue }
+    }
+
+    var pinTarget: VersionCheckpoint.Target? {
+        get { self[PinTargetKey.self] }
+        set { self[PinTargetKey.self] = newValue }
     }
 }
 
 struct AppCommands: Commands {
     @FocusedBinding(\.previewVisible) private var previewVisible
     @FocusedValue(\.editorActions) private var editorActions
+    @FocusedValue(\.pinTarget) private var pinTarget
 
     @AppStorage(SettingsKeys.focusMode) private var focusMode = false
     @AppStorage(SettingsKeys.showWordCount) private var showWordCount = true
@@ -40,6 +50,16 @@ struct AppCommands: Commands {
             }
             .keyboardShortcut("s", modifiers: [.command, .option])
             Divider()
+        }
+
+        // File menu: sits directly above the system's own Revert To item, which
+        // is where a pin is read back from — pinning files a version into the
+        // same store Browse All Versions reads, so it needs no UI of its own.
+        CommandGroup(after: .saveItem) {
+            Button("Pin This Version") {
+                pinTarget?.pin()
+            }
+            .disabled(pinTarget?.canPin != true)
         }
 
         // App menu: a one-click bridge setup, right below Settings…

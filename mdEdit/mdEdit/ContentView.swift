@@ -56,9 +56,15 @@ struct ContentView: View {
             DocumentRegistry.shared.unregister(url: old)
             DocumentRegistry.shared.register(document: document, url: new)
         }
+        // A revert replaces the document object behind this same window, so the
+        // registry would otherwise keep handing the AI the buffer it discarded.
+        .onChange(of: ObjectIdentifier(document)) { _, _ in
+            DocumentRegistry.shared.register(document: document, url: fileURL)
+        }
         // Surface per-window preview state and editing actions to the menu bar.
         .focusedSceneValue(\.previewVisible, $showPreview)
         .focusedSceneValue(\.editorActions, actions)
+        .focusedSceneValue(\.pinTarget, VersionCheckpoint.Target(document: document, fileURL: fileURL))
         .toolbar {
             ToolbarItem {
                 Button {
@@ -122,6 +128,15 @@ struct MarkdownSourceView: NSViewRepresentable {
         guard let textView = scrollView.documentView as? NSTextView else { return }
         let coordinator = context.coordinator
 
+        // Reverting (File ▸ Revert To) re-reads the file into a *new* document
+        // object behind the same window, without rebuilding this view. Anything
+        // still holding the old one would write the text we just discarded back
+        // over the restored file, so re-point them before doing anything else.
+        if coordinator.document !== document {
+            coordinator.document = document
+            DocumentRegistry.shared.attach(textView: textView, to: document)
+        }
+
         if coordinator.style != style {
             coordinator.style = style
             coordinator.applyStyle()
@@ -145,7 +160,8 @@ struct MarkdownSourceView: NSViewRepresentable {
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
-        let document: MarkdownDocument
+        /// Not `let`: a revert swaps the document out from under the window.
+        var document: MarkdownDocument
         weak var textView: NSTextView?
         weak var scrollView: NSScrollView?
         var style = EditorStyle(familyRaw: EditorFontFamily.mono.rawValue,
