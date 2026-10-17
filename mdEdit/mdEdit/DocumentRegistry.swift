@@ -182,8 +182,20 @@ final class DocumentRegistry {
         // Flush AI edits to disk immediately. Unlike human typing (which autosaves
         // on a short delay), an AI edit is a discrete action, and the git-like
         // model wants the on-disk working tree current the moment it's written.
-        NSDocumentController.shared.document(for: url)?
-            .autosave(withImplicitCancellability: false) { _ in }
+        //
+        // Saving in place often preserves the pre-edit contents as a version of
+        // its own, which duplicates the checkpoint filed above. It lands shortly
+        // after the save reports success — not before — so the duplicate can only
+        // be cleared afterwards, never anticipated. The checkpoint still goes
+        // first: a redundant version in Revert To is a blemish, a missing one is
+        // lost work.
+        if let nsDocument = NSDocumentController.shared.document(for: url) {
+            nsDocument.autosave(withImplicitCancellability: false) { _ in
+                MainActor.assumeIsolated {
+                    VersionCheckpoint.pruneDuplicates(of: url, after: .seconds(2))
+                }
+            }
+        }
 
         return ["ok": true, "revision": document.revision]
     }

@@ -38,9 +38,13 @@ enum VersionCheckpoint {
         // underneath us can.
         guard FileManager.default.fileExists(atPath: target.path) else { return false }
 
-        // Nothing to preserve if the newest version already holds this text —
-        // two Pins in a row, or an edit that replaced a range with itself.
-        if newestVersionContents(of: target) == contents { return false }
+        // Nothing to preserve if some stored version already holds this text —
+        // two Pins in a row, an edit that replaced a range with itself, or the
+        // save that just preserved these contents on its own. Every version is
+        // checked, not just the newest: a version carries the modification date
+        // of the contents it holds, so "newest" by date is not the last one
+        // filed.
+        if hasStoredVersion(matching: contents, of: target) { return false }
 
         // addOfItem copies from a file, so the buffer has to land on disk first.
         // Keeping the document's own filename makes the version's localizedName
@@ -67,6 +71,28 @@ enum VersionCheckpoint {
         }
     }
 
+    /// Drop versions whose contents exactly match one already in the store,
+    /// keeping the first of each set. Saving in place files its own copy of the
+    /// contents a checkpoint just preserved, so without this every AI edit can
+    /// leave two identical entries in Revert To.
+    ///
+    /// The delay exists because that copy appears a moment after the save
+    /// finishes; the work is idempotent, so a prune that runs too early simply
+    /// finds nothing and the next edit clears it.
+    static func pruneDuplicates(of url: URL, after delay: DispatchTimeInterval = .seconds(0)) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            var keptBySize: [Int: [Data]] = [:]
+            for version in NSFileVersion.otherVersionsOfItem(at: url) ?? [] {
+                guard let data = try? Data(contentsOf: version.url) else { continue }
+                if keptBySize[data.count]?.contains(data) == true {
+                    try? version.remove()
+                } else {
+                    keptBySize[data.count, default: []].append(data)
+                }
+            }
+        }
+    }
+
     /// Everything the Pin command needs from the frontmost window, handed to the
     /// menu bar as a focused value so the shortcut always acts on that window.
     struct Target: Equatable {
@@ -90,11 +116,16 @@ enum VersionCheckpoint {
         }
     }
 
-    /// The text of the most recently filed version, used to avoid duplicates.
-    private static func newestVersionContents(of url: URL) -> String? {
-        guard let newest = NSFileVersion.otherVersionsOfItem(at: url)?
-            .max(by: { ($0.modificationDate ?? .distantPast) < ($1.modificationDate ?? .distantPast) }),
-              let data = try? Data(contentsOf: newest.url) else { return nil }
-        return String(decoding: data, as: UTF8.self)
+    /// Whether the version store already holds a version with exactly these
+    /// contents. Sizes are compared first so a document with a long history
+    /// costs one `stat` per version rather than a full read.
+    private static func hasStoredVersion(matching contents: String, of url: URL) -> Bool {
+        let wanted = Data(contents.utf8)
+        for version in NSFileVersion.otherVersionsOfItem(at: url) ?? [] {
+            let size = (try? version.url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize
+            guard size == wanted.count else { continue }
+            if let stored = try? Data(contentsOf: version.url), stored == wanted { return true }
+        }
+        return false
     }
 }
