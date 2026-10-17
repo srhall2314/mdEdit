@@ -18,29 +18,71 @@ struct ContentView: View {
 
     @State private var showPreview = false
     @State private var actions = EditorActions()
+    @State private var columnVisibility: NavigationSplitViewVisibility = .detailOnly
+    /// Type-size nudge for this window only. @State, so it lives and dies with
+    /// the window — a transcript you read from across the room goes back to
+    /// normal size the moment you close it, and no other window follows along.
+    @State private var sizeOffset: CGFloat = 0
 
     @AppStorage(SettingsKeys.fontFamily) private var fontFamily = EditorFontFamily.mono.rawValue
     @AppStorage(SettingsKeys.fontSize) private var fontSize = SettingsKeys.defaultFontSize
     @AppStorage(SettingsKeys.lineHeight) private var lineHeight = SettingsKeys.defaultLineHeight
     @AppStorage(SettingsKeys.focusMode) private var focusMode = false
     @AppStorage(SettingsKeys.showWordCount) private var showWordCount = true
+    @AppStorage(SettingsKeys.sidebarVisible) private var sidebarVisible = false
 
     private var style: EditorStyle {
-        EditorStyle(familyRaw: fontFamily, size: fontSize, lineHeight: lineHeight)
+        EditorStyle(familyRaw: fontFamily, size: resolvedSize, lineHeight: lineHeight)
+    }
+
+    private var resolvedSize: CGFloat { CGFloat(fontSize) + sizeOffset }
+
+    /// The menu nudges the offset; clamping happens here, against the real
+    /// resulting size rather than the nudge, since the base size is a setting.
+    private var zoom: Binding<CGFloat> {
+        Binding(
+            get: { sizeOffset },
+            set: { sizeOffset = min(max($0, Theme.minFontSize - fontSize), Theme.maxFontSize - fontSize) }
+        )
     }
 
     var body: some View {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            FolderSidebar(currentFileURL: fileURL)
+                .navigationSplitViewColumnWidth(min: 180, ideal: 230, max: 360)
+        } detail: {
+            editor
+        }
+        // The sidebar is app-level taste, not per-document state: a new window
+        // or tab opens the way the last one was left.
+        .onAppear { columnVisibility = sidebarVisible ? .all : .detailOnly }
+        .onChange(of: columnVisibility) { _, now in sidebarVisible = now != .detailOnly }
+        .focusedSceneValue(\.sidebarVisible, sidebarShown)
+        .focusedSceneValue(\.editorZoom, zoom)
+    }
+
+    /// The View menu toggles a Bool; the split view speaks visibility.
+    private var sidebarShown: Binding<Bool> {
+        Binding(
+            get: { columnVisibility != .detailOnly },
+            set: { columnVisibility = $0 ? .all : .detailOnly }
+        )
+    }
+
+    private var editor: some View {
         Group {
             if showPreview {
-                MarkdownPreview(text: document.text, baseURL: fileURL)
+                MarkdownPreview(text: document.text, baseURL: fileURL, scale: resolvedSize / SettingsKeys.defaultFontSize)
             } else {
                 MarkdownSourceView(document: document, style: style, focusMode: focusMode, actions: actions)
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
         .overlay(alignment: .bottomTrailing) {
-            if showWordCount {
-                WordCountPill(text: document.text)
+            if showWordCount || sizeOffset != 0 {
+                WordCountPill(text: document.text,
+                              pointSize: sizeOffset == 0 ? nil : resolvedSize,
+                              showsWordCount: showWordCount)
                     .padding(16)
             }
         }
@@ -262,6 +304,9 @@ struct MarkdownSourceView: NSViewRepresentable {
 struct MarkdownPreview: NSViewRepresentable {
     let text: String
     var baseURL: URL?
+    /// 1 = the preview's own typography. Scaled by the window's type-size
+    /// nudge so reading mode zooms with the editor.
+    var scale: CGFloat = 1
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -285,14 +330,14 @@ struct MarkdownPreview: NSViewRepresentable {
 
         context.coordinator.textView = textView
         context.coordinator.scrollView = scrollView
-        context.coordinator.render(text: text, baseURL: baseURL)
+        context.coordinator.render(text: text, baseURL: baseURL, scale: scale)
         context.coordinator.startObservingWidth()
 
         return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        context.coordinator.render(text: text, baseURL: baseURL)
+        context.coordinator.render(text: text, baseURL: baseURL, scale: scale)
     }
 
     final class Coordinator: NSObject {
@@ -300,6 +345,7 @@ struct MarkdownPreview: NSViewRepresentable {
         weak var scrollView: NSScrollView?
         private var renderedText: String?
         private var renderedBase: URL?
+        private var renderedScale: CGFloat?
         private var frameObserver: NSObjectProtocol?
 
         deinit {
@@ -307,13 +353,16 @@ struct MarkdownPreview: NSViewRepresentable {
         }
 
         /// Rebuild the attributed content only when the source or base URL changed.
-        func render(text: String, baseURL: URL?) {
+        func render(text: String, baseURL: URL?, scale: CGFloat) {
             guard let textView else { return }
-            if renderedText == text && renderedBase == baseURL { return }
+            if renderedText == text && renderedBase == baseURL && renderedScale == scale { return }
             renderedText = text
             renderedBase = baseURL
+            renderedScale = scale
 
-            let attributed = MarkdownAttributedRenderer.attributedString(from: text, baseURL: baseURL)
+            let attributed = MarkdownAttributedRenderer
+                .attributedString(from: text, baseURL: baseURL)
+                .scalingFonts(by: scale)
             let selection = textView.selectedRange()
             textView.textStorage?.setAttributedString(attributed)
             let length = attributed.length
@@ -349,13 +398,23 @@ struct MarkdownPreview: NSViewRepresentable {
 
 struct WordCountPill: View {
     let text: String
+    /// Shown only while this window is zoomed, so the temporary size is
+    /// visible without adding permanent chrome.
+    var pointSize: CGFloat? = nil
+    var showsWordCount = true
 
     private var wordCount: Int {
         text.split { $0.isWhitespace || $0.isNewline }.count
     }
 
+    private var label: String {
+        let size = pointSize.map { "\(Int($0.rounded())) pt" }
+        let words = showsWordCount ? "\(wordCount) words" : nil
+        return [size, words].compactMap { $0 }.joined(separator: " · ")
+    }
+
     var body: some View {
-        Text("\(wordCount) words")
+        Text(label)
             .font(.callout)
             .monospacedDigit()
             .foregroundStyle(.secondary)

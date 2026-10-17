@@ -17,4 +17,9 @@ enum Theme {
     /// Minimum horizontal breathing room when the window is narrower than the measure.
     static let minHorizontalInset: CGFloat = 28
     static let verticalInset: CGFloat = 36
+
+    /// Bounds for a window's temporary type size. Wide enough to read from
+    /// across the room, tight enough that the measure still makes sense.
+    static let minFontSize: CGFloat = 9
+    static let maxFontSize: CGFloat = 48
 }

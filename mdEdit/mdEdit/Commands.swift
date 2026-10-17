@@ -17,6 +17,15 @@ struct PinTargetKey: FocusedValueKey {
     typealias Value = VersionCheckpoint.Target
 }
 
+struct SidebarVisibleKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+/// The frontmost window's type-size nudge, in points off the size set in Settings.
+struct EditorZoomKey: FocusedValueKey {
+    typealias Value = Binding<CGFloat>
+}
+
 extension FocusedValues {
     var previewVisible: Binding<Bool>? {
         get { self[PreviewVisibleKey.self] }
@@ -27,10 +36,22 @@ extension FocusedValues {
         get { self[PinTargetKey.self] }
         set { self[PinTargetKey.self] = newValue }
     }
+
+    var sidebarVisible: Binding<Bool>? {
+        get { self[SidebarVisibleKey.self] }
+        set { self[SidebarVisibleKey.self] = newValue }
+    }
+
+    var editorZoom: Binding<CGFloat>? {
+        get { self[EditorZoomKey.self] }
+        set { self[EditorZoomKey.self] = newValue }
+    }
 }
 
 struct AppCommands: Commands {
     @FocusedBinding(\.previewVisible) private var previewVisible
+    @FocusedBinding(\.sidebarVisible) private var sidebarVisible
+    @FocusedBinding(\.editorZoom) private var editorZoom
     @FocusedValue(\.editorActions) private var editorActions
     @FocusedValue(\.pinTarget) private var pinTarget
 
@@ -52,9 +73,10 @@ struct AppCommands: Commands {
             Divider()
         }
 
-        // File menu: sits directly above the system's own Revert To item, which
-        // is where a pin is read back from — pinning files a version into the
-        // same store Browse All Versions reads, so it needs no UI of its own.
+        // File menu, with Save and Revert To rather than off on its own: a pin
+        // files a version into the same store Revert To ▸ Browse All Versions
+        // reads, so it needs no UI of its own to be read back. Silent on
+        // success, like Save in any autosaving app.
         CommandGroup(after: .saveItem) {
             Button("Pin This Version") {
                 pinTarget?.pin()
@@ -69,6 +91,16 @@ struct AppCommands: Commands {
             }
         }
 
+        // View menu: the sidebar sits in the system's own sidebar slot, with
+        // the standard ⌃⌘S.
+        CommandGroup(after: .sidebar) {
+            Button(sidebarVisible == true ? "Hide Sidebar" : "Show Sidebar") {
+                sidebarVisible?.toggle()
+            }
+            .keyboardShortcut("s", modifiers: [.control, .command])
+            .disabled(sidebarVisible == nil)
+        }
+
         // View menu additions, next to "Show Toolbar".
         CommandGroup(after: .toolbar) {
             Button(previewVisible == true ? "Show Source" : "Show Preview") {
@@ -76,6 +108,20 @@ struct AppCommands: Commands {
             }
             .keyboardShortcut("p", modifiers: [.command, .shift])
             .disabled(previewVisible == nil)
+
+            // Type size for this window only: it is not written to settings,
+            // and it goes away with the window.
+            Button("Bigger") { editorZoom = (editorZoom ?? 0) + 1 }
+                .keyboardShortcut("+", modifiers: [.command])
+                .disabled(editorZoom == nil)
+            Button("Smaller") { editorZoom = (editorZoom ?? 0) - 1 }
+                .keyboardShortcut("-", modifiers: [.command])
+                .disabled(editorZoom == nil)
+            Button("Actual Size") { editorZoom = 0 }
+                .keyboardShortcut("0", modifiers: [.command])
+                .disabled(editorZoom == nil || editorZoom == 0)
+
+            Divider()
 
             Toggle("Focus Mode", isOn: $focusMode)
                 .keyboardShortcut("f", modifiers: [.command, .shift])

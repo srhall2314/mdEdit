@@ -287,3 +287,24 @@ private extension NSFont {
         return NSFont(descriptor: descriptor, size: pointSize) ?? self
     }
 }
+
+// MARK: - Scaling
+
+extension NSAttributedString {
+    /// Return a copy with every font scaled. Used by the window-local type
+    /// size: the preview's typography is a fixed hierarchy built around a 15pt
+    /// body, so scaling it afterwards keeps the proportions intact without
+    /// threading a size through every renderer branch.
+    func scalingFonts(by scale: CGFloat) -> NSAttributedString {
+        guard scale != 1 else { return self }
+        let copy = NSMutableAttributedString(attributedString: self)
+        let full = NSRange(location: 0, length: copy.length)
+        copy.enumerateAttribute(.font, in: full) { value, range, _ in
+            guard let font = value as? NSFont else { return }
+            copy.addAttribute(.font, value: NSFont(descriptor: font.fontDescriptor,
+                                                   size: font.pointSize * scale) ?? font,
+                              range: range)
+        }
+        return copy
+    }
+}

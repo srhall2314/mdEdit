@@ -17,6 +17,7 @@ enum SettingsKeys {
     static let appearance = "app.appearance"
     static let focusMode = "editor.focusMode"
     static let showWordCount = "editor.showWordCount"
+    static let sidebarVisible = "sidebar.visible"
 
     static let defaultFontSize = 15.0
     static let defaultLineHeight = 1.5
